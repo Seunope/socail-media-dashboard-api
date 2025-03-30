@@ -29,22 +29,6 @@ export class UsersService {
     };
   }
 
-  async userData(userId: number): Promise<ResponseData> {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-
-    if (!user) {
-      throw new NotFoundException({
-        message: `User not found`,
-        status: false,
-      });
-    }
-    return {
-      message: 'User data fetched',
-      status: true,
-      data: user,
-    };
-  }
-
   async findUserByEmail(email: string) {
     return this.prisma.user.findUnique({ where: { email } });
   }

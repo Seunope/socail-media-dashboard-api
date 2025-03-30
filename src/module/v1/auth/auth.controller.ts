@@ -1,28 +1,62 @@
-import { Controller, Post, Body, UnauthorizedException } from '@nestjs/common';
+// auth.controller.ts
+import { Controller, Get, Req, Res, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
-import { ApiTags, ApiResponse } from '@nestjs/swagger';
-import { CreateUserDto } from '../users/users.dto';
-import { LoginDto } from './auth.dto';
+import { Request, Response } from 'express';
+import { OAuthUser } from './interfaces/oauth-user.interface';
 
-@ApiTags('Auth')
-@Controller('v1/auth')
+@Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private authService: AuthService) {}
 
-  @Post('signup')
-  @ApiResponse({ status: 201, description: 'User registered successfully' })
-  @ApiResponse({
-    status: 409,
-    description: 'User with this email already exists',
-  })
-  async signUp(@Body() createUserDto: CreateUserDto) {
-    return this.authService.signUp(createUserDto);
+  @Get('facebook')
+  @UseGuards(AuthGuard('facebook-token'))
+  async facebookLogin(@Req() req: Request): Promise<any> {
+    return req.user;
   }
 
-  @Post('login')
-  @ApiResponse({ status: 200, description: 'User logged in successfully' })
-  @ApiResponse({ status: 401, description: 'Invalid email or password' })
-  async login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto.email, loginDto.password);
+  @Get('facebook/callback')
+  @UseGuards(AuthGuard('facebook-token'))
+  async facebookLoginCallback(
+    @Req() req: Request & { user: OAuthUser },
+    @Res() res: Response,
+  ) {
+    try {
+      const dbUser = await this.authService.validateOAuthLogin(
+        req.user,
+        'facebook',
+      );
+
+      const user = {
+        id: req.user.id,
+        email: req.user.email,
+        role: req.user.role || 'USER', // Default role if not provided
+      };
+
+      const token = await this.authService.generateJwtToken({
+        id: dbUser.id,
+        email: dbUser.email,
+        role: dbUser.role,
+      });
+
+      res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${token}`);
+    } catch (error) {
+      res.redirect(
+        `${process.env.FRONTEND_URL}/login?error=authentication_failed`,
+      );
+    }
+  }
+
+  @Get('instagram')
+  @UseGuards(AuthGuard('instagram'))
+  async instagramLogin() {
+    // The passport strategy will redirect to Instagram
+  }
+
+  @Get('instagram/callback')
+  @UseGuards(AuthGuard('instagram'))
+  async instagramLoginCallback(@Req() req: Request, @Res() res: Response) {
+    const token = await this.authService.generateJwtToken(req.user as any);
+    res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${token}`);
   }
 }
